@@ -1,172 +1,157 @@
-// Code your design here
 //---------------------------------------------------------------------------------------
 // Universitatea Transilvania din Brasov
-// Proiect     : Testarea echipamentelor electronice
-// Autor       : Pascu Marius
-// Data        : 24.03.2021
+// Proiect     : Translator APB-I2C
+// Autor       : Pavel Codrut
+// Data        : 24.03.2025
 //---------------------------------------------------------------------------------------
-// Descriere   : Implementarea unui control ambiental
+// Descriere   : Implementarea translatorului
 //---------------------------------------------------------------------------------------
 import uvm_pkg::*;
 // create module
-module ambient (clk_i, reset_n, enable_i, temperature_i, humidity_i, luminous_intensity_i, heat_o, AC_o, dehumidifier_o, blinds_o, ready_o, valid_i);
-parameter DATA_WIDTH = 6;
-// input control signals
-input                  clk_i               ; // Clock signal
-input                  reset_n             ; // Asynchronous reset, activ low
-input                  enable_i            ; // Enable signal
-// input values 4 bits
-  input  [DATA_WIDTH-1:0]  temperature_i       ; // Temperature data, 6 bits
-  input  [DATA_WIDTH  :0]  humidity_i          ; // Humidity data, 7 bits
-  input  [DATA_WIDTH+3:0]  luminous_intensity_i; // Luminous intensity data, 10 bits
-// Valid inputs
-input                     valid_i             ; // Valid data input
-// Output pins
-output   reg              heat_o              ; // Heat output
-output   reg              AC_o                ; // AC output
-output   reg              dehumidifier_o      ; // Dehumidifier output
-output   reg              blinds_o            ; // Blinds output
-// Ready output
-output    reg             ready_o             ; // ready output
+module translator (
+    input                  clk_i,         // Clock input
+    input                  reset_n,       // Active low reset
+    input                  psel,          // APB select
+    input                  penable,       // APB enable
+    input                  pwrite,        // APB write signal
+    input  [2:0]           paddr,         // APB address bus
+    input  [7:0]           pwdata,        // APB write data bus
+    output reg [7:0]       prdata,        // APB read data bus
+    output reg             pready,        // APB ready signal
+    output reg             scl,           // I2C clock line
+    inout                  sda            // I2C data line
+);
 
-// FSM states
-parameter OFF     = 3'b000                 ; // OFF, inactive machine
-parameter START   = 3'b001	               ; // START, output ready 1 and wait for valid 1
-parameter LOAD    = 3'b010                 ; // LOAD, load data from input to registers
-parameter CONTROL = 3'b011                 ; // CONTROL, get decisions by data values
+    // Internal registers
+    reg [7:0] wdata;                      // Write data register
+    reg [7:0] rdata;                      // Read data register
+    reg [7:0] ctrl;                       // Control register
 
-// registers
-reg [DATA_WIDTH-1:0]   data_temp           ; // register for load temperature data
-reg [DATA_WIDTH  :0]   data_hum            ; // register for load humidity data
-reg [DATA_WIDTH+3:0]   data_lumin          ; // register for load luminous intensity data
-  reg [2:0]              state, next_state               ; // register for state machine
+    // I2C State Machine Control
+    reg [3:0] state;                      // State machine for I2C
+    reg [2:0] bit_cnt;                    // Bit counter for byte transfer
+    reg [7:0] temp_data;                  // Temp register for data transmission
 
-// FSM control
-  always@(*)
-  begin
-    if (~enable_i) 
-      next_state <= OFF;
-    else
-      case (state)
-      OFF:      next_state <= START;
-      START: 	next_state <=  (valid_i)? LOAD : START;
-      LOAD: 	next_state <=   CONTROL;
-      CONTROL:  next_state <=   START;
-    endcase
-  end
-  
-always@(posedge clk_i)
-  begin
-      if (reset_n)   
-        state <= START;
-      else
-        state <= next_state;
-  end
-  
-// data flow
-  
-  // output signals init
-  initial begin 
-    	 ready_o   		<= 'b0;
-     	 heat_o 		<= 'b0;
-         AC_o 		 	<= 'b0;
-         dehumidifier_o <= 'b0;
-         blinds_o 		<= 'b0;
+    // State definitions for I2C FSM
+    localparam IDLE = 4'd0,
+               START = 4'd1,
+               ADDR = 4'd2,
+               DATA = 4'd3,
+               STOP = 4'd4;
+
+    // Control Register Bits
+    wire error = ctrl[0];                 // Error bit (ACK/NACK)
+    wire start = ctrl[1];                 // Start bit
+    wire rw = ctrl[2];                    // Read/Write bit
+    wire reserved = ctrl[7:3];            // Reserved bits
+
+    // I2C-related signals
+    reg ack;                              // Acknowledge from I2C slave
+
+    // SCL and SDA initial states
+    initial begin
+        scl = 1'b1; // Clock line idle high
     end
 
-// ready signal
-  always@(posedge clk_i)
-    if(state == START && ~valid_i && enable_i)//if module is not started (enable = 0), then ready signal should not be asserted anymore
-    	ready_o <= 'b1; 
-  else
-   	    ready_o <= 'b0;
-  
-// output signals reset
-  always@(posedge clk_i)
-    if(state == OFF || reset_n||~enable_i)
-    begin
-     	 heat_o 		<= 'b0;
-         AC_o 		 	<= 'b0;
-         dehumidifier_o <= 'b0;
-         blinds_o 		<= 'b0;
-     	 ready_o 		<= 'b0;
-    end
-  
-// Load data temperature
-always@(posedge clk_i)
-begin
-  if(reset_n || state == OFF||~enable_i)          
-    data_temp <= 'd23;//23 este o valoare neutra care nu porneste nici elementul de incalzire nici aparatul de AC
-  else
-      if(state == LOAD)     
-        data_temp <= temperature_i[DATA_WIDTH-1:0];
-end 
+    assign sda = (state == DATA && rw == 1) ? 1'bz : temp_data[7]; // SDA for reads or writes
 
-// Load data humidity
-always@(posedge clk_i)
-begin
-  if(reset_n || state == OFF||~enable_i)          
-    data_hum <= 'b0;
-  else
-      if(state == LOAD)     
-        data_hum <= humidity_i[DATA_WIDTH:0];
-end 
-
-// Load data luminous intensity
-always@(posedge clk_i)
-begin
-  if(reset_n || state == OFF||~enable_i)          
-    data_lumin <= 'b0;
-  else
-      if(state == LOAD)     
-        data_lumin <= luminous_intensity_i[DATA_WIDTH+3:0];
-end 
-
-// Control data temperature
-always@(posedge clk_i)
-begin
-  if(state == CONTROL && enable_i)
-	begin
-      if(data_temp <= 'b10110) //22 grade 
-			heat_o <= 'b1;else
-              if(data_temp > 'b10110) // 22 
-			heat_o <= 'b0;
-      if(data_temp > 'b11001) // 25
-			AC_o <= 1;else
-      if(data_temp <= 'b10110) // 22
-			AC_o <= 'b0;
-	end
-end
-
-
-// Control data humidity
-always@(posedge clk_i)
-begin
-  if(state == CONTROL && enable_i)
-	begin
-      if(data_hum > 'b110010) //50
-			dehumidifier_o <= 'b1;else
-              if(data_hum <= 'b100011) // 35                
-			dehumidifier_o <= 'b0;
-                 
-	end
-end
-
-
-
-// Control data luminous intensity
-always@(posedge clk_i)
-begin
-  if(state == CONTROL && enable_i)
-	begin
-		if(data_lumin > 'b1010111100) // >700
-			blinds_o <= 'b1;else
-              if(data_lumin <= 'b11001000)  // <=200
-                begin
-		        	blinds_o <= 'b0;
-                    $display("ceeee?");
+    // APB Interface Handling
+    always @(posedge clk_i or negedge reset_n) begin
+        if (!reset_n) begin
+            wdata <= 8'b0;
+            rdata <= 8'b0;
+            ctrl <= 8'b0;
+            prdata <= 8'b0;
+            pready <= 1'b0;
+        end else if (psel && penable) begin
+            case (paddr)
+                3'b000: begin // wdata register
+                    if (pwrite) wdata <= pwdata;
+                    pready <= 1'b1;
                 end
-	end
-end
+                3'b001: begin // rdata register
+                    prdata <= rdata;
+                    pready <= 1'b1;
+                end
+                3'b010: begin // ctrl register
+                    if (pwrite) ctrl <= pwdata;
+                    prdata <= ctrl;
+                    pready <= 1'b1;
+                end
+                default: pready <= 1'b0;
+            endcase
+        end else begin
+            pready <= 1'b0;
+        end
+    end
+
+    // I2C State Machine
+    always @(posedge clk_i or negedge reset_n) begin
+        if (!reset_n) begin
+            state <= IDLE;
+            scl <= 1'b1;
+            temp_data <= 8'b0;
+            ack <= 1'b1;
+            bit_cnt <= 3'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= START;
+                        scl <= 1'b1;
+                        temp_data <= {wdata, rw}; // Prepare address + read/write bit
+                        bit_cnt <= 3'd7;
+                    end
+                end
+
+                START: begin
+                    sda <= 1'b0; // Start condition
+                    scl <= 1'b1;
+                    state <= ADDR;
+                end
+
+                ADDR: begin
+                    scl <= 1'b0; // Clock low
+                    sda <= temp_data[bit_cnt]; // Send bit
+                    bit_cnt <= bit_cnt - 1;
+                    if (bit_cnt == 0) begin
+                        state <= DATA;
+                        bit_cnt <= 3'd7; // Reset bit counter
+                    end
+                end
+
+                DATA: begin
+                    if (rw == 0) begin // Write
+                        scl <= 1'b1; // Clock high
+                        sda <= temp_data[bit_cnt]; // Send data bit
+                        bit_cnt <= bit_cnt - 1;
+                        if (bit_cnt == 0) begin
+                            ack <= sda; // Capture ACK/NACK
+                            ctrl[0] <= sda; // Update error bit
+                            if (ack) state <= STOP; // Stop if NACK
+                            else state <= ADDR; // Continue if ACK
+                        end
+                    end else begin // Read
+                        scl <= 1'b1; // Clock high
+                        rdata[bit_cnt] <= sda; // Capture data bit
+                        bit_cnt <= bit_cnt - 1;
+                        if (bit_cnt == 0) begin
+                            ack <= sda; // Capture ACK
+                            if (ack) state <= STOP; // Stop if NACK
+                            else state <= ADDR; // Continue if ACK
+                        end
+                    end
+                end
+
+                STOP: begin
+                    sda <= 1'b1; // Stop condition
+                    scl <= 1'b1;
+                    state <= IDLE;
+                end
+
+                default: state <= IDLE;
+            endcase
+        end
+    end
 
 endmodule
