@@ -4,19 +4,8 @@ class apb_monitor extends uvm_monitor;
   // Ports to observe APB signals
   virtual apb_if apb_vif; // Virtual interface to connect to the DUT's APB interface
 
-  // Transaction type for APB
-  typedef struct {
-    bit        psel;      // Select
-    bit        penable;   // Enable
-    bit        pwrite;    // Write
-    logic [2:0] paddr;    // Address
-    logic [7:0] pwdata;   // Write data
-    logic [7:0] prdata;   // Read data
-    bit        pready;    // Ready signal
-  } apb_transaction_t;
-
   // Analysis port to send the captured transactions
-  uvm_analysis_port #(apb_transaction_t) apb_ap;
+  uvm_analysis_port #(tranzactie_apb) apb_ap;
 
   // Constructor
   function new(string name, uvm_component parent);
@@ -35,7 +24,7 @@ class apb_monitor extends uvm_monitor;
 
   // Run phase (monitoring activity)
   task run_phase(uvm_phase phase);
-    apb_transaction_t apb_trans;
+    tranzactie_apb apb_trans;
 
     forever begin
       @(posedge apb_vif.clk_i); // Trigger on clock edge
