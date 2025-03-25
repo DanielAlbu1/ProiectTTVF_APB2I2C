@@ -4,17 +4,8 @@ class i2c_monitor extends uvm_monitor;
   // Ports to observe I2C signals
   virtual i2c_if i2c_vif; // Virtual interface for I2C
 
-  // Transaction type for I2C
-  typedef struct {
-    bit        start_condition; // Start condition detected
-    bit        stop_condition;  // Stop condition detected
-    logic [7:0] data;           // Data being transmitted or received
-    bit        rw;              // Read/Write bit
-    bit        ack;             // ACK/NACK response
-  } i2c_transaction_t;
-
   // Analysis port to send the captured transactions
-  uvm_analysis_port #(i2c_transaction_t) i2c_ap;
+  uvm_analysis_port #(tranzactie_i2c) i2c_ap;
 
   // Constructor
   function new(string name, uvm_component parent);
@@ -33,7 +24,7 @@ class i2c_monitor extends uvm_monitor;
 
   // Run phase (monitoring activity)
   task run_phase(uvm_phase phase);
-    i2c_transaction_t i2c_trans;
+    tranzactie_i2c i2c_trans;
     bit [7:0] shift_reg;
     bit [2:0] bit_cnt;
 
