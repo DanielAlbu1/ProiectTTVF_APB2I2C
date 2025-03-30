@@ -27,4 +27,33 @@ interface i2c_if;
         inout sda
     );
 
+  // ------------------------------------------------------------
+    // ASSERTIONS / CHECKERS
+    // ------------------------------------------------------------
+
+     // 1. Signal Unknown Check
+    // Ensure neither scl nor sda are in an unknown (X) state
+    property signal_unknown_check;
+        @(posedge scl)
+        !$isunknown(scl) && !$isunknown(sda);
+    endproperty
+    assert property (signal_unknown_check);
+
+    // 2. START Condition Check
+    // SDA must go LOW while SCL is HIGH (indicates a START condition)
+    property start_condition_check;
+        @(posedge scl)
+        (scl && $fell(sda));
+    endproperty
+    assert property (start_condition_check);
+
+    // 3. STOP Condition Check
+    // SDA must go HIGH while SCL is HIGH (indicates a STOP condition)
+    property stop_condition_check;
+        @(posedge scl)
+        (scl && $rose(sda));
+    endproperty
+    assert property (stop_condition_check);
+
+
 endinterface
