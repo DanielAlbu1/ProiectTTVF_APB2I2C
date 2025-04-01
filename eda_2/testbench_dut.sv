@@ -1,45 +1,122 @@
 `timescale 1ns/1ps
-
+`include "design.sv"
 module testbench();
-logic clk;
+    logic clk;
+    reg reset_n;      // Active low reset
+    reg psel;         // APB select
+    reg penable;      // APB enable
+    reg pwrite;       // APB write signal
+    reg [7:0] paddr;  // APB address bus
+    reg [7:0] pwdata; // APB write data bus
+    wire [7:0] prdata; // APB read data bus
+    wire pready;      // APB ready signal
+    wire scl;         // I2C clock line
+    wire sda;         // I2C data line
 
-reg reset_n;      // Active low reset
-reg psel;          // APB select
-reg penable;       // APB enable
-reg pwrite;        // APB write signal
-reg paddr;         // APB address bus
-reg pwdata;        // APB write data bus
-reg prdata;        // APB read data bus
-reg pready;        // APB ready signal
-reg scl;           // I2C clock line
-reg sda;            // I2C data line
+    // Clock Generation
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk; // 10ns period
+    end
 
-initial begin 
-    clk =0;
-forever clk <= ##5 ~clk;
-end
+    // DUT Instantiation
+    translator dut (
+        .clk_i(clk),
+        .reset_n(reset_n),
+        .psel(psel),
+        .penable(penable),
+        .pwrite(pwrite),
+        .paddr(paddr),
+        .pwdata(pwdata),
+        .prdata(prdata),
+        .pready(pready),
+        .scl(scl),
+        .sda(sda)
+    );
+
+    // Test Stimulus
+    initial begin
+        // Apply reset
+        reset_n = 0;
+        psel = 0;
+        penable = 0;
+        pwrite = 0;
+        paddr = 0;
+        pwdata = 0;
+        #20;
+        reset_n = 1;  // De-assert reset
+
+        // Perform APB write transactions
+        write_reg(8'h00, 8'h32);
+        write_reg(8'h01, 8'h13);
+        write_reg(8'h02, 8'h62);
+
+        // Perform APB read transaction
+        read_reg(8'h00);
+        read_reg(8'h01);
+        read_reg(8'h02);
+
+        #100;
+        $finish;
+    end
+
+    task test_test_transfer_citire();
+        psel = 0;
+        penable = 0;
+        pwrite = 0;
+        paddr = 0;
+        pwdata = 0;
+        #20;
+        reset_n = 1;  // De-assert reset
+
+        // Perform APB write transactions
+        write_reg(8'h00, 8'h32);
+        write_reg(8'h01, 8'h13);
+        write_reg(8'h02, 8'h62);
+
+        // Perform APB read transaction
+        read_reg(8'h00);
+        read_reg(8'h01);
+        read_reg(8'h02);
 
 
-module translator (
-.clk_i(clk),         // Clock input
-.reset_n(reset_n),       // Active low reset
-.psel(psel),          // APB select
-.penable(penable),       // APB enable
-.pwrite(pwrite),        // APB write signal
-.paddr(paddr),         // APB address bus
-.pwdata(pwdata),        // APB write data bus
-.prdata(prdata),        // APB read data bus
-.pready(pready),        // APB ready signal
-.scl(scl),           // I2C clock line
-.sda(sda)            // I2C data line
+    endtask
 
-initial begin
-   write_reg(0, 8'h32);
-end
+    // APB Write Task
+    task write_reg(input [7:0] addr, input [7:0] data);
+        begin
+            @(posedge clk);
+            psel = 1;
+            pwrite = 1;
+            paddr = addr;
+            pwdata = data;
+            penable = 0;
+            @(posedge clk);
+            penable = 1;
+            @(posedge clk);
+            while (!pready) @(posedge clk);
+            psel = 0;
+            penable = 0;
+            pwrite = 0;
+        end
+    endtask
 
-task write_reg(bit [7:0] addr, bit [7:0] data);
-    paddr = addr;
-    pwdata = data;
-endtask
+    // APB Read Task
+    task read_reg(input [7:0] addr);
+        begin
+            @(posedge clk);
+            psel = 1;
+            pwrite = 0;
+            paddr = addr;
+            penable = 0;
+            @(posedge clk);
+            penable = 1;
+            @(posedge clk);
+            while (!pready) @(posedge clk);
+            $display("Read from Address %h: Data = %h", addr, prdata);
+            psel = 0;
+            penable = 0;
+        end
+    endtask
 
-endmodule 
+endmodule

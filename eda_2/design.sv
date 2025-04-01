@@ -15,17 +15,17 @@ module translator (
     input                  penable,       // APB enable
     input                  pwrite,        // APB write signal
     input  [2:0]           paddr,         // APB address bus
-    input  [7:0]           pwdata,        // APB write data bus
-    output reg [7:0]       prdata,        // APB read data bus
+    input  [7:0]           preg_wdata,        // APB write data bus
+    output reg [7:0]       preg_rdata,        // APB read data bus
     output reg             pready,        // APB ready signal
     output reg             scl,           // I2C clock line
-    inout                  sda            // I2C data line
+    inout  reg             sda            // I2C data line
 );
 
     // Internal registers
-    reg [7:0] wdata;                      // Write data register
-    reg [7:0] rdata;                      // Read data register
-    reg [7:0] ctrl;                       // Control register
+    reg [7:0] reg_wdata;                      // Write data register
+    reg [7:0] reg_rdata;                      // Read data register
+    reg [7:0] reg_ctrl;                       // Control register
 
     // I2C State Machine Control
     reg [3:0] state;                      // State machine for I2C
@@ -40,10 +40,10 @@ module translator (
                STOP = 4'd4;
 
     // Control Register Bits
-    wire error = ctrl[0];                 // Error bit (ACK/NACK)
-    wire start = ctrl[1];                 // Start bit
-    wire rw = ctrl[2];                    // Read/Write bit
-    wire reserved = ctrl[7:3];            // Reserved bits
+    wire error = reg_ctrl[0];                 // Error bit (ACK/NACK)
+    wire start = reg_ctrl[1];                 // Start bit
+    wire rw = reg_ctrl[2];                    // Read/Write bit
+    wire reserved = reg_ctrl[7:3];            // Reserved bits
 
     // I2C-related signals
     reg ack;                              // Acknowledge from I2C slave
@@ -55,27 +55,62 @@ module translator (
 
     assign sda = (state == DATA && rw == 1) ? 1'bz : temp_data[7]; // SDA for reads or writes
 
+    always @(posedge clk or negedge reset_n) begin
+    if (~reset_n)
+        preg_rdata <= 0;
+    else if(psel && !penable && !pwrite) begin// primul tact al tranzactiei de citire 
+        case(paddr)
+        0: preg_wdata <= reg_wdata;
+        1: preg_rdata <= reg_rdata;
+        2: preg_rdata <= reg_ctrl;
+        default: preg_rdata<= 0;
+        endcase
+    end
+
+        always @(posedge clk or negedge reset_n) begin
+    if (~reset_n)begin
+        reg_wdata <=0;
+        reg_rdata <= 0;
+        reg_ctrl <=0;
+    end
+    else if(psel && !penable && pwrite) begin // primul tact al tranzactiei de scriere 
+        case(paddr)
+        0: reg_wdata <= pwdata;
+        1: reg_rdata <= prdata;
+        2: reg_ctrl <= pwdata;
+        endcase
+    end
+    end
+    always @(posedge clk or negedge reset_n)
+    if (~reset_n)
+        pslverr <= 0;
+    else
+    if (pslverr ==1)
+    pslverr <=0;
+    else if(psel && !penable && paddr>2) // primul tact al tranzactiei
+        pslverr <=1;
+
     // APB Interface Handling
     always @(posedge clk_i or negedge reset_n) begin
         if (!reset_n) begin
-            wdata <= 8'b0;
-            rdata <= 8'b0;
-            ctrl <= 8'b0;
-            prdata <= 8'b0;
+            reg_wdata <= 8'b0;
+            reg_rdata <= 8'b0;
+            reg_ctrl <= 8'b0;
+            preg_rdata <= 8'b0;
             pready <= 1'b0;
         end else if (psel && penable) begin
             case (paddr)
-                3'b000: begin // wdata register
-                    if (pwrite) wdata <= pwdata;
+                3'b000: begin // reg_wdata register
+                    if (pwrite) reg_wdata <= preg_wdata;
                     pready <= 1'b1;
                 end
-                3'b001: begin // rdata register
-                    prdata <= rdata;
+                3'b001: begin // reg_rdata register
+                    preg_rdata <= reg_rdata;
                     pready <= 1'b1;
                 end
-                3'b010: begin // ctrl register
-                    if (pwrite) ctrl <= pwdata;
-                    prdata <= ctrl;
+                3'b010: begin // reg_ctrl register
+                    if (pwrite) reg_ctrl <= preg_wdata;
+                    preg_rdata <= reg_ctrl;
                     pready <= 1'b1;
                 end
                 default: pready <= 1'b0;
@@ -99,7 +134,7 @@ module translator (
                     if (start) begin
                         state <= START;
                         scl <= 1'b1;
-                        temp_data <= {wdata, rw}; // Prepare address + read/write bit
+                        temp_data <= {reg_wdata, rw}; // Prepare address + read/write bit
                         bit_cnt <= 3'd7;
                     end
                 end
@@ -127,13 +162,13 @@ module translator (
                         bit_cnt <= bit_cnt - 1;
                         if (bit_cnt == 0) begin
                             ack <= sda; // Capture ACK/NACK
-                            ctrl[0] <= sda; // Update error bit
+                            reg_ctrl[0] <= sda; // Update error bit
                             if (ack) state <= STOP; // Stop if NACK
                             else state <= ADDR; // Continue if ACK
                         end
                     end else begin // Read
                         scl <= 1'b1; // Clock high
-                        rdata[bit_cnt] <= sda; // Capture data bit
+                        reg_rdata[bit_cnt] <= sda; // Capture data bit
                         bit_cnt <= bit_cnt - 1;
                         if (bit_cnt == 0) begin
                             ack <= sda; // Capture ACK
