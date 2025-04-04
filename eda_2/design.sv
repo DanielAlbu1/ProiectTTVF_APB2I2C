@@ -91,7 +91,16 @@ module translator (
 //    else if(psel && !penable && paddr>2) // primul tact al tranzactiei
 //        pslverr <=1;
 
-    // APB Interface Handling
+    always @(posedge clk or negedge reset_n)
+    if (~reset_n)
+        pready <= 0;
+    else
+    if (pready ==1)
+    pready <= 0;
+    else if(psel && penable ) // primul tact al tranzactiei
+        pready <=1;
+
+ //   APB Interface Handling
     // always @(posedge clk or negedge reset_n) begin
     //     if (!reset_n) begin
     //         reg_wdata <= 8'b0;

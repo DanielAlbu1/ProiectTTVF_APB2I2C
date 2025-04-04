@@ -93,11 +93,13 @@ module testbench();
             penable = 0;
             @(posedge clk);
             penable = 1;
-            @(posedge clk);
-            while (!pready) @(posedge clk);
+            @(posedge clk iff pready === 1);
             psel = 0;
             penable = 0;
-            pwrite = 0;
+            pwrite = 'bz;
+            
+            paddr = 'bz;
+            pwdata = 'bz;
         end
     endtask
 
@@ -111,11 +113,12 @@ module testbench();
             penable = 0;
             @(posedge clk);
             penable = 1;
-            @(posedge clk);
-            while (!pready) @(posedge clk);
+            @(posedge clk iff pready === 1);
             $display("Read from Address %h: Data = %h", addr, prdata);
             psel = 0;
             penable = 0;
+            pwrite = 'bz;
+            paddr = 'bz;
         end
     endtask
 
