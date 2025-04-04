@@ -9,13 +9,13 @@
 import uvm_pkg::*;
 // create module
 module translator (
-    input                  clk_i,         // Clock input
+    input                  clk,         // Clock input
     input                  reset_n,       // Active low reset
     input                  psel,          // APB select
     input                  penable,       // APB enable
     input                  pwrite,        // APB write signal
     input  [2:0]           paddr,         // APB address bus
-    input  [7:0]           preg_wdata,        // APB write data bus
+    input  reg [7:0]      preg_wdata,        // APB write data bus
     output reg [7:0]       preg_rdata,        // APB read data bus
     output reg             pready,        // APB ready signal
     output reg             scl,           // I2C clock line
@@ -60,14 +60,15 @@ module translator (
         preg_rdata <= 0;
     else if(psel && !penable && !pwrite) begin// primul tact al tranzactiei de citire 
         case(paddr)
-        0: preg_wdata <= reg_wdata;
+        0: preg_rdata <= reg_wdata;
         1: preg_rdata <= reg_rdata;
         2: preg_rdata <= reg_ctrl;
         default: preg_rdata<= 0;
         endcase
     end
+    end
 
-        always @(posedge clk or negedge reset_n) begin
+    always @(posedge clk or negedge reset_n) begin
     if (~reset_n)begin
         reg_wdata <=0;
         reg_rdata <= 0;
@@ -75,118 +76,118 @@ module translator (
     end
     else if(psel && !penable && pwrite) begin // primul tact al tranzactiei de scriere 
         case(paddr)
-        0: reg_wdata <= pwdata;
-        1: reg_rdata <= prdata;
-        2: reg_ctrl <= pwdata;
+        0: reg_wdata <= preg_wdata;
+        1: reg_rdata <= preg_wdata;
+        2: reg_ctrl <= preg_wdata;
         endcase
     end
     end
-    always @(posedge clk or negedge reset_n)
-    if (~reset_n)
-        pslverr <= 0;
-    else
-    if (pslverr ==1)
-    pslverr <=0;
-    else if(psel && !penable && paddr>2) // primul tact al tranzactiei
-        pslverr <=1;
+//    always @(posedge clk or negedge reset_n)
+//    if (~reset_n)
+//        pslverr <= 0;
+//    else
+//    if (pslverr ==1)
+//    pslverr <=0;
+//    else if(psel && !penable && paddr>2) // primul tact al tranzactiei
+//        pslverr <=1;
 
     // APB Interface Handling
-    always @(posedge clk_i or negedge reset_n) begin
-        if (!reset_n) begin
-            reg_wdata <= 8'b0;
-            reg_rdata <= 8'b0;
-            reg_ctrl <= 8'b0;
-            preg_rdata <= 8'b0;
-            pready <= 1'b0;
-        end else if (psel && penable) begin
-            case (paddr)
-                3'b000: begin // reg_wdata register
-                    if (pwrite) reg_wdata <= preg_wdata;
-                    pready <= 1'b1;
-                end
-                3'b001: begin // reg_rdata register
-                    preg_rdata <= reg_rdata;
-                    pready <= 1'b1;
-                end
-                3'b010: begin // reg_ctrl register
-                    if (pwrite) reg_ctrl <= preg_wdata;
-                    preg_rdata <= reg_ctrl;
-                    pready <= 1'b1;
-                end
-                default: pready <= 1'b0;
-            endcase
-        end else begin
-            pready <= 1'b0;
-        end
-    end
+    // always @(posedge clk or negedge reset_n) begin
+    //     if (!reset_n) begin
+    //         reg_wdata <= 8'b0;
+    //         reg_rdata <= 8'b0;
+    //         reg_ctrl <= 8'b0;
+    //         preg_rdata <= 8'b0;
+    //         pready <= 1'b0;
+    //     end else if (psel && penable) begin
+    //         case (paddr)
+    //             3'b000: begin // reg_wdata register
+    //                 if (pwrite) reg_wdata <= preg_wdata;
+    //                 pready <= 1'b1;
+    //             end
+    //             3'b001: begin // reg_rdata register
+    //                 preg_rdata <= reg_rdata;
+    //                 pready <= 1'b1;
+    //             end
+    //             3'b010: begin // reg_ctrl register
+    //                 if (pwrite) reg_ctrl <= preg_wdata;
+    //                 preg_rdata <= reg_ctrl;
+    //                 pready <= 1'b1;
+    //             end
+    //             default: pready <= 1'b0;
+    //         endcase
+    //     end else begin
+    //         pready <= 1'b0;
+    //     end
+    // end
 
-    // I2C State Machine
-    always @(posedge clk_i or negedge reset_n) begin
-        if (!reset_n) begin
-            state <= IDLE;
-            scl <= 1'b1;
-            temp_data <= 8'b0;
-            ack <= 1'b1;
-            bit_cnt <= 3'b0;
-        end else begin
-            case (state)
-                IDLE: begin
-                    if (start) begin
-                        state <= START;
-                        scl <= 1'b1;
-                        temp_data <= {reg_wdata, rw}; // Prepare address + read/write bit
-                        bit_cnt <= 3'd7;
-                    end
-                end
+    // // I2C State Machine
+    // always @(posedge clk or negedge reset_n) begin
+    //     if (!reset_n) begin
+    //         state <= IDLE;
+    //         scl <= 1'b1;
+    //         temp_data <= 8'b0;
+    //         ack <= 1'b1;
+    //         bit_cnt <= 3'b0;
+    //     end else begin
+    //         case (state)
+    //             IDLE: begin
+    //                 if (start) begin
+    //                     state <= START;
+    //                     scl <= 1'b1;
+    //                     temp_data <= {reg_wdata, rw}; // Prepare address + read/write bit
+    //                     bit_cnt <= 3'd7;
+    //                 end
+    //             end
 
-                START: begin
-                    sda <= 1'b0; // Start condition
-                    scl <= 1'b1;
-                    state <= ADDR;
-                end
+    //             START: begin
+    //                 sda <= 1'b0; // Start condition
+    //                 scl <= 1'b1;
+    //                 state <= ADDR;
+    //             end
 
-                ADDR: begin
-                    scl <= 1'b0; // Clock low
-                    sda <= temp_data[bit_cnt]; // Send bit
-                    bit_cnt <= bit_cnt - 1;
-                    if (bit_cnt == 0) begin
-                        state <= DATA;
-                        bit_cnt <= 3'd7; // Reset bit counter
-                    end
-                end
+    //             ADDR: begin
+    //                 scl <= 1'b0; // Clock low
+    //                 sda <= temp_data[bit_cnt]; // Send bit
+    //                 bit_cnt <= bit_cnt - 1;
+    //                 if (bit_cnt == 0) begin
+    //                     state <= DATA;
+    //                     bit_cnt <= 3'd7; // Reset bit counter
+    //                 end
+    //             end
 
-                DATA: begin
-                    if (rw == 0) begin // Write
-                        scl <= 1'b1; // Clock high
-                        sda <= temp_data[bit_cnt]; // Send data bit
-                        bit_cnt <= bit_cnt - 1;
-                        if (bit_cnt == 0) begin
-                            ack <= sda; // Capture ACK/NACK
-                            reg_ctrl[0] <= sda; // Update error bit
-                            if (ack) state <= STOP; // Stop if NACK
-                            else state <= ADDR; // Continue if ACK
-                        end
-                    end else begin // Read
-                        scl <= 1'b1; // Clock high
-                        reg_rdata[bit_cnt] <= sda; // Capture data bit
-                        bit_cnt <= bit_cnt - 1;
-                        if (bit_cnt == 0) begin
-                            ack <= sda; // Capture ACK
-                            if (ack) state <= STOP; // Stop if NACK
-                            else state <= ADDR; // Continue if ACK
-                        end
-                    end
-                end
+    //             DATA: begin
+    //                 if (rw == 0) begin // Write
+    //                     scl <= 1'b1; // Clock high
+    //                     sda <= temp_data[bit_cnt]; // Send data bit
+    //                     bit_cnt <= bit_cnt - 1;
+    //                     if (bit_cnt == 0) begin
+    //                         ack <= sda; // Capture ACK/NACK
+    //                         reg_ctrl[0] <= sda; // Update error bit
+    //                         if (ack) state <= STOP; // Stop if NACK
+    //                         else state <= ADDR; // Continue if ACK
+    //                     end
+    //                 end else begin // Read
+    //                     scl <= 1'b1; // Clock high
+    //                     reg_rdata[bit_cnt] <= sda; // Capture data bit
+    //                     bit_cnt <= bit_cnt - 1;
+    //                     if (bit_cnt == 0) begin
+    //                         ack <= sda; // Capture ACK
+    //                         if (ack) state <= STOP; // Stop if NACK
+    //                         else state <= ADDR; // Continue if ACK
+    //                     end
+    //                 end
+    //             end
 
-                STOP: begin
-                    sda <= 1'b1; // Stop condition
-                    scl <= 1'b1;
-                    state <= IDLE;
-                end
+    //             STOP: begin
+    //                 sda <= 1'b1; // Stop condition
+    //                 scl <= 1'b1;
+    //                 state <= IDLE;
+    //             end
 
-                default: state <= IDLE;
-            endcase
-        end
-    end
+    //             default: state <= IDLE;
+    //         endcase
+    //     end
+    // end
 
 endmodule

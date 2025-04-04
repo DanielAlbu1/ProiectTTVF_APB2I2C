@@ -21,14 +21,14 @@ module testbench();
 
     // DUT Instantiation
     translator dut (
-        .clk_i(clk),
+        .clk(clk),
         .reset_n(reset_n),
         .psel(psel),
         .penable(penable),
         .pwrite(pwrite),
         .paddr(paddr),
-        .pwdata(pwdata),
-        .prdata(prdata),
+        .preg_wdata(pwdata),
+        .preg_rdata(prdata),
         .pready(pready),
         .scl(scl),
         .sda(sda)
