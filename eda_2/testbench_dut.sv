@@ -12,6 +12,9 @@ module testbench();
     wire pready;      // APB ready signal
     wire scl;         // I2C clock line
     wire sda;         // I2C data line
+    logic sda_tb;
+
+    assign sda = (sda_tb === 1'b0) ? 1'b0 : 1'bz;
 
     // Clock Generation
     initial begin
@@ -33,7 +36,9 @@ module testbench();
         .scl(scl),
         .sda(sda)
     );
-
+    initial begin
+        i2c_slave_ack(1);
+    end
     // Test Stimulus
     initial begin
         // Apply reset
@@ -45,42 +50,15 @@ module testbench();
         pwdata = 0;
         #20;
         reset_n = 1;  // De-assert reset
-
         // Perform APB write transactions
-        write_reg(8'h00, 8'h32);
-        write_reg(8'h01, 8'h13);
-        write_reg(8'h02, 8'h62);
+        write_reg(8'h00, 8'b1010_1010); // adress
+        write_reg(8'h02, 8'b0000_0110); // control register
+        write_reg(8'h00, 8'b0101_1000); // data
+        write_reg(8'h02, 8'b0000_0000); // control register
 
-        // Perform APB read transaction
-        read_reg(8'h00);
-        read_reg(8'h01);
-        read_reg(8'h02);
-
-        #100;
+        #300;
         $finish;
     end
-
-    task test_test_transfer_citire();
-        psel = 0;
-        penable = 0;
-        pwrite = 0;
-        paddr = 0;
-        pwdata = 0;
-        #20;
-        reset_n = 1;  // De-assert reset
-
-        // Perform APB write transactions
-        write_reg(8'h00, 8'h32);
-        write_reg(8'h01, 8'h13);
-        write_reg(8'h02, 8'h62);
-
-        // Perform APB read transaction
-        read_reg(8'h00);
-        read_reg(8'h01);
-        read_reg(8'h02);
-
-
-    endtask
 
     // APB Write Task
     task write_reg(input [7:0] addr, input [7:0] data);
@@ -121,5 +99,31 @@ module testbench();
             paddr = 'bz;
         end
     endtask
+   // Add task for acknowledge response from i2c slave
+   task i2c_slave_ack(integer counter);
+    integer i;          
+    sda_tb <= 1'bz;
+    while(counter) begin
+        // Wait for 8 bits of data to be sent by the DUT
+        for (i = 7; i >= 0; i = i - 1) begin
+            // Wait for rising edge of SCL (data is stable on rising edge)
+            @(posedge scl);
 
+            // Wait for falling edge of SCL (completes the bit transfer)
+            @(negedge scl);
+        end
+
+        // Drive the ACK bit (pull SDA low) during the 9th clock cycle
+        //@(negedge scl);
+        sda_tb <= 0; // ACK (Slave pulls SDA low)
+
+        // Wait for the rising edge of SCL to latch ACK
+        @(posedge scl);
+
+        // Release SDA after ACK
+        @(negedge scl);
+        sda_tb <= 1'bz; // Release control of the SDA line
+        counter = counter - 1;
+    end
+endtask
 endmodule
