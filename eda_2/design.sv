@@ -145,7 +145,7 @@ module translator (
                 end
 
                 DATA: begin
-                    if (rw == 1'b1) begin // Write operation
+                    if (rw == 1'b0) begin // Write operation
                         if (scl_state) begin
                             if (bit_cnt == 0) begin
                                 sda_out <= 1'b1; // Release SDA for ACK
